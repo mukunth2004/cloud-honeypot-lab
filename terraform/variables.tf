@@ -15,3 +15,9 @@ variable "availability_zone" {
   type        = string
   default     = "eu-north-1a"
 }
+
+variable "instance_type" {
+  description = "EC2 instance type for the honeypot"
+  type        = string
+  default     = "t3.micro"
+}

@@ -45,3 +45,30 @@ resource "aws_security_group" "honeypot" {
 
   tags = { Name = "${var.project_name}-sg" }
 }
+
+# Latest Ubuntu 22.04 AMI for this region, looked up from Canonical's public parameter
+data "aws_ssm_parameter" "ubuntu_2204" {
+  name = "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
+}
+
+resource "aws_instance" "honeypot" {
+  ami                    = data.aws_ssm_parameter.ubuntu_2204.value
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.public.id
+  vpc_security_group_ids = [aws_security_group.honeypot.id]
+  iam_instance_profile   = aws_iam_instance_profile.honeypot.name
+
+  metadata_options {
+    http_tokens                 = "required"
+    http_endpoint               = "enabled"
+    http_put_response_hop_limit = 1
+  }
+
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+    encrypted   = true
+  }
+
+  tags = { Name = "${var.project_name}-honeypot" }
+}
