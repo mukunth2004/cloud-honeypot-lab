@@ -36,3 +36,32 @@ resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
+
+# NACL for dynamic blocking.
+# No inline ingress/egress blocks on purpose: inline blocks make Terraform
+# authoritative and it would delete the deny entries the Lambda adds at runtime.
+resource "aws_network_acl" "honeypot" {
+  vpc_id     = aws_vpc.honeypot.id
+  subnet_ids = [aws_subnet.public.id]
+
+  tags = { Name = "${var.project_name}-nacl" }
+}
+
+# Rule 200: baseline allow. Deny rules added later get LOWER numbers.
+resource "aws_network_acl_rule" "ingress_allow_all" {
+  network_acl_id = aws_network_acl.honeypot.id
+  rule_number    = 200
+  egress         = false
+  protocol       = "-1"
+  rule_action    = "allow"
+  cidr_block     = "0.0.0.0/0"
+}
+
+resource "aws_network_acl_rule" "egress_allow_all" {
+  network_acl_id = aws_network_acl.honeypot.id
+  rule_number    = 200
+  egress         = true
+  protocol       = "-1"
+  rule_action    = "allow"
+  cidr_block     = "0.0.0.0/0"
+}
