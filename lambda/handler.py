@@ -53,3 +53,25 @@ def claim_rule_number(table, ip, now=None, ttl_seconds=BLOCK_SECONDS):
             if err.response["Error"]["Code"] != "ConditionalCheckFailedException":
                 raise
     return None
+
+def block_ip(table, ec2, nacl_id, ip, now=None):
+    """Reserve a rule number, then add a deny rule for this IP to the NACL.
+
+    Returns the rule number used.
+    """
+    number = claim_rule_number(table, ip, now=now)
+    if number is None:
+        raise RuntimeError("no free NACL rule numbers")
+    try:
+        ec2.create_network_acl_entry(
+            NetworkAclId=nacl_id,
+            RuleNumber=number,
+            Protocol="-1",
+            RuleAction="deny",
+            Egress=False,
+            CidrBlock=f"{ip}/32",
+        )
+    except ClientError:
+        table.delete_item(Key={"rule_number": number})
+        raise
+    return number

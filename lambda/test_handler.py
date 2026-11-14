@@ -5,10 +5,11 @@ from botocore.exceptions import ClientError
 from handler import (
     RULE_NUMBER_FIRST,
     RULE_NUMBER_LAST,
+    block_ip,
+    claim_rule_number,
     is_allowlisted,
     load_allowlist,
     parse_attacker_ip,
-    claim_rule_number,
 )
 
 from handler import is_allowlisted, load_allowlist, parse_attacker_ip
@@ -59,6 +60,8 @@ class FakeTable:
                 "PutItem",
             )
         self.items[key] = Item
+    def delete_item(self, Key):
+        self.items.pop(Key["rule_number"], None)
 
 
 class TestClaimRuleNumber(unittest.TestCase):
@@ -93,5 +96,48 @@ class TestClaimRuleNumber(unittest.TestCase):
 
         with self.assertRaises(ClientError):
             claim_rule_number(BrokenTable(), "8.8.8.8", now=1000)
+
+class FakeEc2:
+    """A pretend EC2 client that records the calls it receives."""
+
+    def __init__(self, fail=False):
+        self.calls = []
+        self.fail = fail
+
+    def create_network_acl_entry(self, **kwargs):
+        if self.fail:
+            raise ClientError(
+                {"Error": {"Code": "UnauthorizedOperation", "Message": "no"}},
+                "CreateNetworkAclEntry",
+            )
+        self.calls.append(kwargs)
+
+
+class TestBlockIp(unittest.TestCase):
+    def test_adds_deny_entry_with_right_settings(self):
+        table, ec2 = FakeTable(), FakeEc2()
+        ip = parse_attacker_ip("8.8.8.8")
+        number = block_ip(table, ec2, "acl-123", ip, now=1000)
+        self.assertEqual(number, RULE_NUMBER_FIRST)
+        call = ec2.calls[0]
+        self.assertEqual(call["NetworkAclId"], "acl-123")
+        self.assertEqual(call["RuleAction"], "deny")
+        self.assertEqual(call["CidrBlock"], "8.8.8.8/32")
+        self.assertFalse(call["Egress"])
+
+    def test_undoes_reservation_if_nacl_call_fails(self):
+        table, ec2 = FakeTable(), FakeEc2(fail=True)
+        ip = parse_attacker_ip("8.8.8.8")
+        with self.assertRaises(ClientError):
+            block_ip(table, ec2, "acl-123", ip, now=1000)
+        self.assertEqual(table.items, {})
+
+    def test_raises_when_no_numbers_free(self):
+        table, ec2 = FakeTable(), FakeEc2()
+        for n in range(RULE_NUMBER_FIRST, RULE_NUMBER_LAST + 1):
+            table.items[n] = {"rule_number": n}
+        with self.assertRaises(RuntimeError):
+            block_ip(table, ec2, "acl-123", parse_attacker_ip("8.8.8.8"), now=1000)
+        self.assertEqual(ec2.calls, [])
 if __name__ == "__main__":
     unittest.main()
