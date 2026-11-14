@@ -69,6 +69,7 @@ resource "aws_instance" "honeypot" {
     volume_type = "gp3"
     encrypted   = true
   }
-
-  tags = { Name = "${var.project_name}-honeypot" }
+  user_data                   = file("${path.module}/../scripts/user_data.sh")
+  user_data_replace_on_change = true
+  tags                        = { Name = "${var.project_name}-honeypot" }
 }
