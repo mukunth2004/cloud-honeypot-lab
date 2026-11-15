@@ -142,11 +142,15 @@ class TestBlockIp(unittest.TestCase):
         self.assertEqual(ec2.calls, [])
 
 class TestHandle(unittest.TestCase):
-    def run_handle(self, body, allowlist="", table=None, ec2=None):
+    def run_handle(self, body, allowlist="", table=None, ec2=None, headers=None):
         table = table or FakeTable()
         ec2 = ec2 or FakeEc2()
-        event = {"body": body}
-        result = handle(event, table, ec2, "acl-123", load_allowlist(allowlist))
+        if headers is None:
+            headers = {"x-webhook-secret": "test-secret"}
+        event = {"headers": headers, "body": body}
+        result = handle(
+            event, table, ec2, "acl-123", load_allowlist(allowlist), "test-secret"
+        )
         return result, table, ec2
 
     def test_blocks_valid_ip(self):
@@ -184,5 +188,22 @@ class TestHandle(unittest.TestCase):
         result, _, ec2 = self.run_handle('{"attacker_ip": "8.8.8.8"}', table=table)
         self.assertEqual(result["statusCode"], 503)
         self.assertEqual(ec2.calls, [])
+    def test_missing_secret_is_401(self):
+        result, table, ec2 = self.run_handle('{"attacker_ip": "8.8.8.8"}', headers={})
+        self.assertEqual(result["statusCode"], 401)
+        self.assertEqual(ec2.calls, [])
+        self.assertEqual(table.items, {})
+
+    def test_wrong_secret_is_401(self):
+        result, _, ec2 = self.run_handle(
+            '{"attacker_ip": "8.8.8.8"}', headers={"x-webhook-secret": "wrong"}
+        )
+        self.assertEqual(result["statusCode"], 401)
+        self.assertEqual(ec2.calls, [])
+
+    def test_empty_configured_secret_rejects_everything(self):
+        event = {"headers": {"x-webhook-secret": ""}, "body": '{"attacker_ip": "8.8.8.8"}'}
+        result = handle(event, FakeTable(), FakeEc2(), "acl-123", [], "")
+        self.assertEqual(result["statusCode"], 401)
 if __name__ == "__main__":
     unittest.main()

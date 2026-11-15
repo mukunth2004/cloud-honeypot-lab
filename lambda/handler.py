@@ -4,6 +4,7 @@ import os
 import boto3
 import ipaddress
 import time
+import hmac
 
 from botocore.exceptions import ClientError
 
@@ -84,8 +85,19 @@ def _response(status, payload):
     return {"statusCode": status, "body": json.dumps(payload)}
 
 
-def handle(event, table, ec2, nacl_id, allowlist):
-    """The logic: validate, check the allowlist, block, report."""
+def _is_authorised(event, secret):
+    """True only if the request carries the correct shared secret."""
+    if not secret:
+        return False  # never accept requests if no secret is configured
+    supplied = (event.get("headers") or {}).get("x-webhook-secret", "")
+    return hmac.compare_digest(str(supplied).encode(), secret.encode())
+
+
+def handle(event, table, ec2, nacl_id, allowlist, secret):
+    """The logic: authenticate, validate, check the allowlist, block, report."""
+    if not _is_authorised(event, secret):
+        return _response(401, {"message": "unauthorised"})
+
     try:
         body = json.loads(event.get("body") or "{}")
         ip = parse_attacker_ip(body.get("attacker_ip"))
@@ -103,9 +115,21 @@ def handle(event, table, ec2, nacl_id, allowlist):
     return _response(200, {"status": "blocked", "ip": str(ip), "rule_number": number})
 
 
+_secret_cache = {}
+
+
+def _get_secret():
+    """Read the shared secret from Parameter Store once per Lambda start."""
+    if "value" not in _secret_cache:
+        ssm = boto3.client("ssm")
+        response = ssm.get_parameter(Name=os.environ["SECRET_PARAM"], WithDecryption=True)
+        _secret_cache["value"] = response["Parameter"]["Value"]
+    return _secret_cache["value"]
+
+
 def lambda_handler(event, context):
     """What AWS calls. Connects the real services, then runs the logic."""
     table = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
     ec2 = boto3.client("ec2")
     allowlist = load_allowlist(os.environ.get("ALLOWLIST_IPS", ""))
-    return handle(event, table, ec2, os.environ["NACL_ID"], allowlist)
+    return handle(event, table, ec2, os.environ["NACL_ID"], allowlist, _get_secret())
