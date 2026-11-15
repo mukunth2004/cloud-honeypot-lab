@@ -1,3 +1,7 @@
+import json
+import os
+
+import boto3
 import ipaddress
 import time
 
@@ -75,3 +79,33 @@ def block_ip(table, ec2, nacl_id, ip, now=None):
         table.delete_item(Key={"rule_number": number})
         raise
     return number
+
+def _response(status, payload):
+    return {"statusCode": status, "body": json.dumps(payload)}
+
+
+def handle(event, table, ec2, nacl_id, allowlist):
+    """The logic: validate, check the allowlist, block, report."""
+    try:
+        body = json.loads(event.get("body") or "{}")
+        ip = parse_attacker_ip(body.get("attacker_ip"))
+    except (ValueError, AttributeError):
+        return _response(400, {"message": "invalid request"})
+
+    if is_allowlisted(ip, allowlist):
+        return _response(200, {"status": "skipped", "reason": "allowlisted"})
+
+    try:
+        number = block_ip(table, ec2, nacl_id, ip)
+    except RuntimeError:
+        return _response(503, {"message": "no free rule numbers"})
+
+    return _response(200, {"status": "blocked", "ip": str(ip), "rule_number": number})
+
+
+def lambda_handler(event, context):
+    """What AWS calls. Connects the real services, then runs the logic."""
+    table = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
+    ec2 = boto3.client("ec2")
+    allowlist = load_allowlist(os.environ.get("ALLOWLIST_IPS", ""))
+    return handle(event, table, ec2, os.environ["NACL_ID"], allowlist)

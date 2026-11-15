@@ -10,6 +10,7 @@ from handler import (
     is_allowlisted,
     load_allowlist,
     parse_attacker_ip,
+    handle
 )
 
 from handler import is_allowlisted, load_allowlist, parse_attacker_ip
@@ -138,6 +139,50 @@ class TestBlockIp(unittest.TestCase):
             table.items[n] = {"rule_number": n}
         with self.assertRaises(RuntimeError):
             block_ip(table, ec2, "acl-123", parse_attacker_ip("8.8.8.8"), now=1000)
+        self.assertEqual(ec2.calls, [])
+
+class TestHandle(unittest.TestCase):
+    def run_handle(self, body, allowlist="", table=None, ec2=None):
+        table = table or FakeTable()
+        ec2 = ec2 or FakeEc2()
+        event = {"body": body}
+        result = handle(event, table, ec2, "acl-123", load_allowlist(allowlist))
+        return result, table, ec2
+
+    def test_blocks_valid_ip(self):
+        result, table, ec2 = self.run_handle('{"attacker_ip": "8.8.8.8"}')
+        self.assertEqual(result["statusCode"], 200)
+        self.assertIn('"blocked"', result["body"])
+        self.assertEqual(len(ec2.calls), 1)
+
+    def test_bad_json_is_400(self):
+        result, _, ec2 = self.run_handle("not json")
+        self.assertEqual(result["statusCode"], 400)
+        self.assertEqual(ec2.calls, [])
+
+    def test_missing_ip_is_400(self):
+        result, _, ec2 = self.run_handle("{}")
+        self.assertEqual(result["statusCode"], 400)
+        self.assertEqual(ec2.calls, [])
+
+    def test_private_ip_is_400_and_not_blocked(self):
+        result, _, ec2 = self.run_handle('{"attacker_ip": "10.0.1.120"}')
+        self.assertEqual(result["statusCode"], 400)
+        self.assertEqual(ec2.calls, [])
+
+    def test_allowlisted_ip_is_skipped(self):
+        result, table, ec2 = self.run_handle('{"attacker_ip": "8.8.8.8"}', allowlist="8.8.8.8")
+        self.assertEqual(result["statusCode"], 200)
+        self.assertIn("skipped", result["body"])
+        self.assertEqual(ec2.calls, [])
+        self.assertEqual(table.items, {})
+
+    def test_no_free_numbers_is_503(self):
+        table = FakeTable()
+        for n in range(RULE_NUMBER_FIRST, RULE_NUMBER_LAST + 1):
+            table.items[n] = {"rule_number": n}
+        result, _, ec2 = self.run_handle('{"attacker_ip": "8.8.8.8"}', table=table)
+        self.assertEqual(result["statusCode"], 503)
         self.assertEqual(ec2.calls, [])
 if __name__ == "__main__":
     unittest.main()
