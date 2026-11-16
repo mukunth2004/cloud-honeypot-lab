@@ -1,5 +1,5 @@
 import unittest
-
+import base64
 from botocore.exceptions import ClientError
 
 from handler import (
@@ -205,5 +205,24 @@ class TestHandle(unittest.TestCase):
         event = {"headers": {"x-webhook-secret": ""}, "body": '{"attacker_ip": "8.8.8.8"}'}
         result = handle(event, FakeTable(), FakeEc2(), "acl-123", [], "")
         self.assertEqual(result["statusCode"], 401)
+    
+    def test_base64_encoded_body_is_decoded(self):
+        encoded = base64.b64encode(b'{"attacker_ip": "8.8.8.8"}').decode()
+        event = {
+            "headers": {"x-webhook-secret": "test-secret"},
+            "body": encoded,
+            "isBase64Encoded": True,
+        }
+        result = handle(event, FakeTable(), FakeEc2(), "acl-123", [], "test-secret")
+        self.assertEqual(result["statusCode"], 200)
+        self.assertIn("blocked", result["body"])
+    def test_invalid_base64_body_is_400(self):
+        event = {
+            "headers": {"x-webhook-secret": "test-secret"},
+            "body": "!!!not-base64!!!",
+            "isBase64Encoded": True,
+        }
+        result = handle(event, FakeTable(), FakeEc2(), "acl-123", [], "test-secret")
+        self.assertEqual(result["statusCode"], 400)
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 import json
 import os
-
+import base64
 import boto3
 import ipaddress
 import time
@@ -99,7 +99,10 @@ def handle(event, table, ec2, nacl_id, allowlist, secret):
         return _response(401, {"message": "unauthorised"})
 
     try:
-        body = json.loads(event.get("body") or "{}")
+        raw_body = event.get("body") or "{}"
+        if event.get("isBase64Encoded"):
+            raw_body = base64.b64decode(raw_body, validate=True).decode("utf-8")
+        body = json.loads(raw_body)
         ip = parse_attacker_ip(body.get("attacker_ip"))
     except (ValueError, AttributeError):
         return _response(400, {"message": "invalid request"})
