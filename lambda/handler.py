@@ -182,10 +182,20 @@ def _get_secret():
         _secret_cache["value"] = response["Parameter"]["Value"]
     return _secret_cache["value"]
 
+def is_cleanup_event(event):
+    """True only for the scheduled cleanup trigger, never for a web request."""
+    return event.get("action") == "cleanup" and "requestContext" not in event
 
 def lambda_handler(event, context):
     """What AWS calls. Connects the real services, then runs the logic."""
     table = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
     ec2 = boto3.client("ec2")
+    nacl_id = os.environ["NACL_ID"]
+
+    if is_cleanup_event(event):
+        removed = cleanup_expired(table, ec2, nacl_id)
+        print(json.dumps({"cleanup_removed": removed}))
+        return {"status": "cleanup", "removed": removed}
+
     allowlist = load_allowlist(os.environ.get("ALLOWLIST_IPS", ""))
-    return handle(event, table, ec2, os.environ["NACL_ID"], allowlist, _get_secret())
+    return handle(event, table, ec2, nacl_id, allowlist, _get_secret())

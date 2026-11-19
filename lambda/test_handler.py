@@ -15,6 +15,7 @@ from handler import (
     is_allowlisted,
     load_allowlist,
     parse_attacker_ip,
+    is_cleanup_event
 )
 
 from handler import is_allowlisted, load_allowlist, parse_attacker_ip
@@ -329,5 +330,19 @@ class TestCleanup(unittest.TestCase):
         with self.assertRaises(ClientError):
             cleanup_expired(table, ec2, "acl-123", now=2000)
         self.assertIn(RULE_NUMBER_FIRST, table.items)
+class TestIsCleanupEvent(unittest.TestCase):
+    def test_scheduled_trigger_is_cleanup(self):
+        self.assertTrue(is_cleanup_event({"action": "cleanup"}))
+
+    def test_web_request_with_action_in_body_is_not_cleanup(self):
+        event = {"body": '{"action": "cleanup"}', "requestContext": {}}
+        self.assertFalse(is_cleanup_event(event))
+
+    def test_action_beside_request_context_is_not_cleanup(self):
+        self.assertFalse(is_cleanup_event({"action": "cleanup", "requestContext": {}}))
+
+    def test_other_events_are_not_cleanup(self):
+        self.assertFalse(is_cleanup_event({}))
+        self.assertFalse(is_cleanup_event({"action": "something-else"}))
 if __name__ == "__main__":
     unittest.main()
