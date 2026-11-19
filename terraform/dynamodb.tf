@@ -12,6 +12,6 @@ resource "aws_dynamodb_table" "blocked_ips" {
 
   ttl {
     attribute_name = "expires_at"
-    enabled        = true
+    enabled        = false
   }
 }
