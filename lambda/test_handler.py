@@ -8,6 +8,7 @@ from handler import (
     RULE_NUMBER_LAST,
     block_ip,
     claim_rule_number,
+    cleanup_expired,
     extend_block,
     find_active_block,
     handle,
@@ -67,7 +68,10 @@ class FakeTable:
     def delete_item(self, Key):
         self.items.pop(Key["rule_number"], None)
 
-    def scan(self, FilterExpression, ExpressionAttributeNames, ExpressionAttributeValues):
+    def scan(self, FilterExpression=None, ExpressionAttributeNames=None,
+             ExpressionAttributeValues=None):
+        if ExpressionAttributeValues is None:
+            return {"Items": list(self.items.values())}
         ip = ExpressionAttributeValues[":ip"]
         return {"Items": [i for i in self.items.values() if i.get("ip") == ip]}
 
@@ -118,9 +122,11 @@ class TestClaimRuleNumber(unittest.TestCase):
 class FakeEc2:
     """A pretend EC2 client that records the calls it receives."""
 
-    def __init__(self, fail=False):
+    def __init__(self, fail=False, delete_error=None):
         self.calls = []
         self.fail = fail
+        self.delete_error = delete_error
+        self.deleted = []
 
     def create_network_acl_entry(self, **kwargs):
         if self.fail:
@@ -129,6 +135,13 @@ class FakeEc2:
                 "CreateNetworkAclEntry",
             )
         self.calls.append(kwargs)
+    def delete_network_acl_entry(self, **kwargs):
+        if self.delete_error:
+            raise ClientError(
+                {"Error": {"Code": self.delete_error, "Message": "x"}},
+                "DeleteNetworkAclEntry",
+            )
+        self.deleted.append(kwargs["RuleNumber"])
 
 
 class TestBlockIp(unittest.TestCase):
@@ -284,5 +297,37 @@ class TestDuplicateBlocks(unittest.TestCase):
             handle(event, table, ec2, "acl-123", [], "test-secret")
         self.assertEqual(len(ec2.calls), 2)
         self.assertEqual(len(table.items), 2)
+class TestCleanup(unittest.TestCase):
+    def make_blocks(self):
+        table, ec2 = FakeTable(), FakeEc2()
+        claim_rule_number(table, "8.8.8.8", now=1000, ttl_seconds=100)   # expires at 1100
+        claim_rule_number(table, "1.1.1.1", now=1000, ttl_seconds=5000)  # expires at 6000
+        return table, ec2
+
+    def test_removes_only_expired_blocks(self):
+        table, ec2 = self.make_blocks()
+        removed = cleanup_expired(table, ec2, "acl-123", now=2000)
+        self.assertEqual(removed, [RULE_NUMBER_FIRST])
+        self.assertEqual(ec2.deleted, [RULE_NUMBER_FIRST])
+        self.assertEqual(list(table.items), [RULE_NUMBER_FIRST + 1])
+
+    def test_nothing_expired_changes_nothing(self):
+        table, ec2 = self.make_blocks()
+        self.assertEqual(cleanup_expired(table, ec2, "acl-123", now=1050), [])
+        self.assertEqual(len(table.items), 2)
+
+    def test_rule_already_gone_still_removes_row(self):
+        table, _ = self.make_blocks()
+        ec2 = FakeEc2(delete_error="InvalidNetworkAclEntry.NotFound")
+        removed = cleanup_expired(table, ec2, "acl-123", now=2000)
+        self.assertEqual(removed, [RULE_NUMBER_FIRST])
+        self.assertEqual(list(table.items), [RULE_NUMBER_FIRST + 1])
+
+    def test_real_error_keeps_the_row(self):
+        table, _ = self.make_blocks()
+        ec2 = FakeEc2(delete_error="UnauthorizedOperation")
+        with self.assertRaises(ClientError):
+            cleanup_expired(table, ec2, "acl-123", now=2000)
+        self.assertIn(RULE_NUMBER_FIRST, table.items)
 if __name__ == "__main__":
     unittest.main()

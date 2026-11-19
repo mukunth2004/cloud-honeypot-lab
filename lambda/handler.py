@@ -84,6 +84,27 @@ def extend_block(table, rule_number, ip, now=None, ttl_seconds=BLOCK_SECONDS):
         ExpressionAttributeValues={":e": now + ttl_seconds, ":ip": str(ip)},
     )
 
+def cleanup_expired(table, ec2, nacl_id, now=None):
+    """Remove NACL deny rules and table rows whose block has expired.
+
+    Returns the list of rule numbers removed.
+    """
+    now = int(time.time()) if now is None else now
+    removed = []
+    for item in table.scan().get("Items", []):
+        if int(item["expires_at"]) > now:
+            continue
+        number = int(item["rule_number"])
+        try:
+            ec2.delete_network_acl_entry(
+                NetworkAclId=nacl_id, RuleNumber=number, Egress=False
+            )
+        except ClientError as err:
+            if err.response["Error"]["Code"] != "InvalidNetworkAclEntry.NotFound":
+                raise
+        table.delete_item(Key={"rule_number": number})
+        removed.append(number)
+    return removed
 def block_ip(table, ec2, nacl_id, ip, now=None):
     """Reserve a rule number, then add a deny rule for this IP to the NACL.
 
