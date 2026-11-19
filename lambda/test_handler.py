@@ -3,14 +3,17 @@ import base64
 from botocore.exceptions import ClientError
 
 from handler import (
+    BLOCK_SECONDS,
     RULE_NUMBER_FIRST,
     RULE_NUMBER_LAST,
     block_ip,
     claim_rule_number,
+    extend_block,
+    find_active_block,
+    handle,
     is_allowlisted,
     load_allowlist,
     parse_attacker_ip,
-    handle
 )
 
 from handler import is_allowlisted, load_allowlist, parse_attacker_ip
@@ -63,6 +66,20 @@ class FakeTable:
         self.items[key] = Item
     def delete_item(self, Key):
         self.items.pop(Key["rule_number"], None)
+
+    def scan(self, FilterExpression, ExpressionAttributeNames, ExpressionAttributeValues):
+        ip = ExpressionAttributeValues[":ip"]
+        return {"Items": [i for i in self.items.values() if i.get("ip") == ip]}
+
+    def update_item(self, Key, UpdateExpression, ConditionExpression,
+                    ExpressionAttributeNames, ExpressionAttributeValues):
+        item = self.items.get(Key["rule_number"])
+        if item is None or item.get("ip") != ExpressionAttributeValues[":ip"]:
+            raise ClientError(
+                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "no"}},
+                "UpdateItem",
+            )
+        item["expires_at"] = ExpressionAttributeValues[":e"]
 
 
 class TestClaimRuleNumber(unittest.TestCase):
@@ -224,5 +241,48 @@ class TestHandle(unittest.TestCase):
         }
         result = handle(event, FakeTable(), FakeEc2(), "acl-123", [], "test-secret")
         self.assertEqual(result["statusCode"], 400)
+class TestDuplicateBlocks(unittest.TestCase):
+    def test_finds_active_block(self):
+        table = FakeTable()
+        claim_rule_number(table, "8.8.8.8", now=1000)
+        self.assertEqual(find_active_block(table, "8.8.8.8", now=1500), RULE_NUMBER_FIRST)
+
+    def test_expired_block_is_not_active(self):
+        table = FakeTable()
+        claim_rule_number(table, "8.8.8.8", now=1000, ttl_seconds=60)
+        self.assertIsNone(find_active_block(table, "8.8.8.8", now=2000))
+
+    def test_unknown_ip_has_no_block(self):
+        self.assertIsNone(find_active_block(FakeTable(), "8.8.8.8", now=1000))
+
+    def test_extend_moves_expiry_forward(self):
+        table = FakeTable()
+        claim_rule_number(table, "8.8.8.8", now=1000)
+        extend_block(table, RULE_NUMBER_FIRST, "8.8.8.8", now=5000)
+        self.assertEqual(table.items[RULE_NUMBER_FIRST]["expires_at"], 5000 + BLOCK_SECONDS)
+
+    def test_repeat_alert_adds_no_second_rule(self):
+        table, ec2 = FakeTable(), FakeEc2()
+        event = {
+            "headers": {"x-webhook-secret": "test-secret"},
+            "body": '{"attacker_ip": "8.8.8.8"}',
+        }
+        first = handle(event, table, ec2, "acl-123", [], "test-secret")
+        second = handle(event, table, ec2, "acl-123", [], "test-secret")
+        self.assertIn("blocked", first["body"])
+        self.assertIn("already_blocked", second["body"])
+        self.assertEqual(len(ec2.calls), 1)
+        self.assertEqual(len(table.items), 1)
+
+    def test_different_ips_get_different_rules(self):
+        table, ec2 = FakeTable(), FakeEc2()
+        for ip in ["8.8.8.8", "1.1.1.1"]:
+            event = {
+                "headers": {"x-webhook-secret": "test-secret"},
+                "body": '{"attacker_ip": "%s"}' % ip,
+            }
+            handle(event, table, ec2, "acl-123", [], "test-secret")
+        self.assertEqual(len(ec2.calls), 2)
+        self.assertEqual(len(table.items), 2)
 if __name__ == "__main__":
     unittest.main()

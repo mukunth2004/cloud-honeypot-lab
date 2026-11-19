@@ -29,7 +29,7 @@ data "aws_iam_policy_document" "lambda_permissions" {
 
   statement {
     sid       = "BlockStateTable"
-    actions   = ["dynamodb:PutItem", "dynamodb:DeleteItem"]
+    actions   = ["dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:UpdateItem"]
     resources = [aws_dynamodb_table.blocked_ips.arn]
   }
 

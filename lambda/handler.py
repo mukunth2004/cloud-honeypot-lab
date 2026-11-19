@@ -59,6 +59,31 @@ def claim_rule_number(table, ip, now=None, ttl_seconds=BLOCK_SECONDS):
                 raise
     return None
 
+def find_active_block(table, ip, now=None):
+    """Return the rule number already blocking this IP, or None."""
+    now = int(time.time()) if now is None else now
+    response = table.scan(
+        FilterExpression="#ip = :ip",
+        ExpressionAttributeNames={"#ip": "ip"},
+        ExpressionAttributeValues={":ip": str(ip)},
+    )
+    for item in response.get("Items", []):
+        if int(item["expires_at"]) > now:
+            return int(item["rule_number"])
+    return None
+
+
+def extend_block(table, rule_number, ip, now=None, ttl_seconds=BLOCK_SECONDS):
+    """Push an existing block's expiry forward."""
+    now = int(time.time()) if now is None else now
+    table.update_item(
+        Key={"rule_number": rule_number},
+        UpdateExpression="SET expires_at = :e",
+        ConditionExpression="#ip = :ip",
+        ExpressionAttributeNames={"#ip": "ip"},
+        ExpressionAttributeValues={":e": now + ttl_seconds, ":ip": str(ip)},
+    )
+
 def block_ip(table, ec2, nacl_id, ip, now=None):
     """Reserve a rule number, then add a deny rule for this IP to the NACL.
 
@@ -110,6 +135,13 @@ def handle(event, table, ec2, nacl_id, allowlist, secret):
     if is_allowlisted(ip, allowlist):
         return _response(200, {"status": "skipped", "reason": "allowlisted"})
 
+    existing = find_active_block(table, ip)
+    if existing is not None:
+        extend_block(table, existing, ip)
+        return _response(
+            200, {"status": "already_blocked", "ip": str(ip), "rule_number": existing}
+        )
+    
     try:
         number = block_ip(table, ec2, nacl_id, ip)
     except RuntimeError:
