@@ -36,3 +36,25 @@ resource "aws_iam_role_policy" "ec2_read_filebeat_key" {
   role   = aws_iam_role.honeypot.id
   policy = data.aws_iam_policy_document.ec2_read_filebeat_key.json
 }
+
+data "aws_iam_policy_document" "ec2_deny_other_parameters" {
+  statement {
+    sid    = "DenyReadingAnyOtherParameter"
+    effect = "Deny"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:GetParametersByPath",
+      "ssm:GetParameterHistory",
+    ]
+    not_resources = [
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/filebeat-api-key",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "ec2_deny_other_parameters" {
+  name   = "${var.project_name}-ec2-deny-other-parameters"
+  role   = aws_iam_role.honeypot.id
+  policy = data.aws_iam_policy_document.ec2_deny_other_parameters.json
+}
