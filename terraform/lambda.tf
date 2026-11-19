@@ -12,7 +12,7 @@ resource "aws_lambda_function" "block_ip" {
   filename         = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
   timeout          = 10
-  memory_size      = 128
+  memory_size      = 256
 
   environment {
     variables = {
