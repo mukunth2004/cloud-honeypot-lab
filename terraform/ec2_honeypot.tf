@@ -69,7 +69,19 @@ resource "aws_instance" "honeypot" {
     volume_type = "gp3"
     encrypted   = true
   }
-  user_data                   = file("${path.module}/../scripts/user_data.sh")
+  user_data = templatefile("${path.module}/../scripts/user_data.sh", {
+    aws_region       = var.aws_region
+    project_name     = var.project_name
+    elastic_endpoint = var.elastic_endpoint
+    filebeat_version = var.filebeat_version
+  })
   user_data_replace_on_change = true
   tags                        = { Name = "${var.project_name}-honeypot" }
+
+  lifecycle {
+    ignore_changes = [ami]
+  }
+  credit_specification {
+    cpu_credits = "standard"
+  }
 }
