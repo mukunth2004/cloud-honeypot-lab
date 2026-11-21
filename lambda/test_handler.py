@@ -255,6 +255,14 @@ class TestHandle(unittest.TestCase):
         }
         result = handle(event, FakeTable(), FakeEc2(), "acl-123", [], "test-secret")
         self.assertEqual(result["statusCode"], 400)
+    def test_rejected_body_is_logged(self):
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            self.run_handle("not json")
+        self.assertIn("rejected_body", buffer.getvalue())
 class TestDuplicateBlocks(unittest.TestCase):
     def test_finds_active_block(self):
         table = FakeTable()

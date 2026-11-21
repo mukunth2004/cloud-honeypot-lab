@@ -144,13 +144,14 @@ def handle(event, table, ec2, nacl_id, allowlist, secret):
     if not _is_authorised(event, secret):
         return _response(401, {"message": "unauthorised"})
 
+    raw_body = event.get("body") or "{}"
     try:
-        raw_body = event.get("body") or "{}"
         if event.get("isBase64Encoded"):
             raw_body = base64.b64decode(raw_body, validate=True).decode("utf-8")
         body = json.loads(raw_body)
         ip = parse_attacker_ip(body.get("attacker_ip"))
     except (ValueError, AttributeError):
+        print(json.dumps({"rejected_body": str(raw_body)[:500]}))
         return _response(400, {"message": "invalid request"})
 
     if is_allowlisted(ip, allowlist):
