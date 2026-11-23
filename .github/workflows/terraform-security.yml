@@ -1,0 +1,26 @@
+name: Terraform security scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checkov:
+    name: Checkov
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov on the Terraform code
+        uses: bridgecrewio/checkov-action@v12.1347.0
+        with:
+          directory: terraform/
+          framework: terraform
+          output_format: cli
+          soft_fail: false
