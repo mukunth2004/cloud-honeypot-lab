@@ -1,4 +1,5 @@
 resource "aws_security_group" "honeypot" {
+  #checkov:skip=CKV_AWS_24:Intentional public SSH exposure because port 22 is served by the Cowrie honeypot and real admin access uses SSM
   name        = "${var.project_name}-sg"
   description = "Public SSH lure for Cowrie. No admin port; admin access is via SSM."
   vpc_id      = aws_vpc.honeypot.id
@@ -52,6 +53,8 @@ data "aws_ssm_parameter" "ubuntu_2204" {
 }
 
 resource "aws_instance" "honeypot" {
+  #checkov:skip=CKV_AWS_126:Detailed monitoring costs extra and logs are already shipped to Elastic
+  #checkov:skip=CKV_AWS_135:Performance setting and not a security control and changing it would stop the running honeypot
   ami                    = data.aws_ssm_parameter.ubuntu_2204.value
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id

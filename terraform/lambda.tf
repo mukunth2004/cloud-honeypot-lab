@@ -5,6 +5,11 @@ data "archive_file" "lambda" {
 }
 
 resource "aws_lambda_function" "block_ip" {
+  #checkov:skip=CKV_AWS_116:Called synchronously via Function URL and the scheduled cleanup repeats every 5 minutes so a DLQ adds little
+  #checkov:skip=CKV_AWS_117:A VPC would need NAT or interface endpoints to reach AWS APIs which breaks the near-zero cost goal
+  #checkov:skip=CKV_AWS_173:Environment variables hold no secrets because the webhook secret lives in Parameter Store as a SecureString
+  #checkov:skip=CKV_AWS_50:X-Ray tracing adds cost and permissions and structured CloudWatch logs are enough for this lab
+  #checkov:skip=CKV_AWS_115:Account concurrency quota is 10 and AWS requires that much to stay unreserved so no function level limit can be set
   function_name    = "${var.project_name}-block-ip"
   role             = aws_iam_role.lambda.arn
   runtime          = "python3.12"
