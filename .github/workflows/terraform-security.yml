@@ -24,3 +24,4 @@ jobs:
           framework: terraform
           output_format: cli
           soft_fail: false
+          quiet: true
