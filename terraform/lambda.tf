@@ -30,6 +30,7 @@ resource "aws_lambda_function" "block_ip" {
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
+  #checkov:skip=CKV_AWS_158:Logs are encrypted at rest by default and hold no secrets and a customer managed key costs extra
   name              = "/aws/lambda/${aws_lambda_function.block_ip.function_name}"
   retention_in_days = 7
 }

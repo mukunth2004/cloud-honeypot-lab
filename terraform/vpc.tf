@@ -1,4 +1,5 @@
 resource "aws_vpc" "honeypot" {
+  #checkov:skip=CKV2_AWS_11:VPC Flow Logs deferred to keep cost near zero and honeypot application logs are already shipped to Elastic
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
@@ -7,6 +8,7 @@ resource "aws_vpc" "honeypot" {
 }
 
 resource "aws_subnet" "public" {
+  #checkov:skip=CKV_AWS_130:Honeypot must be reachable from the internet so instances in this subnet need a public IP
   vpc_id                  = aws_vpc.honeypot.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = var.availability_zone
@@ -49,6 +51,10 @@ resource "aws_network_acl" "honeypot" {
 
 # Rule 200: baseline allow. Deny rules added later get LOWER numbers.
 resource "aws_network_acl_rule" "ingress_allow_all" {
+  #checkov:skip=CKV_AWS_229:Baseline allow rule so dynamic deny rules can sit in front and the security group allows only port 22
+  #checkov:skip=CKV_AWS_230:Baseline allow rule so dynamic deny rules can sit in front and the security group allows only port 22
+  #checkov:skip=CKV_AWS_231:Baseline allow rule so dynamic deny rules can sit in front and the security group allows only port 22
+  #checkov:skip=CKV_AWS_232:Port 22 is intentionally exposed because it is served by the Cowrie honeypot
   network_acl_id = aws_network_acl.honeypot.id
   rule_number    = 200
   egress         = false
@@ -64,4 +70,10 @@ resource "aws_network_acl_rule" "egress_allow_all" {
   protocol       = "-1"
   rule_action    = "allow"
   cidr_block     = "0.0.0.0/0"
+}
+
+# Lock down the VPC's default security group so it allows nothing.
+# Our instance uses its own security group, so this changes nothing in practice.
+resource "aws_default_security_group" "default" {
+  vpc_id = aws_vpc.honeypot.id
 }
