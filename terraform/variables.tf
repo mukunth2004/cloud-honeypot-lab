@@ -21,3 +21,20 @@ variable "instance_type" {
   type        = string
   default     = "t3.micro"
 }
+
+variable "allowlist_ips" {
+  description = "IPs or CIDRs that must never be blocked (your own address, test machines)"
+  type        = string
+  default     = ""
+}
+
+variable "elastic_endpoint" {
+  description = "Elastic project endpoint that Filebeat sends logs to"
+  type        = string
+}
+
+variable "filebeat_version" {
+  description = "Pinned Filebeat version, so the rebuild matches what we tested"
+  type        = string
+  default     = "9.5.6"
+}
