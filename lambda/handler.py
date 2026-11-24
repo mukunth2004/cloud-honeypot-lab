@@ -155,11 +155,13 @@ def handle(event, table, ec2, nacl_id, allowlist, secret):
         return _response(400, {"message": "invalid request"})
 
     if is_allowlisted(ip, allowlist):
+        print(json.dumps({"result": "skipped", "ip": str(ip)}))
         return _response(200, {"status": "skipped", "reason": "allowlisted"})
 
     existing = find_active_block(table, ip)
     if existing is not None:
         extend_block(table, existing, ip)
+        print(json.dumps({"result": "already_blocked", "ip": str(ip), "rule_number": existing}))
         return _response(
             200, {"status": "already_blocked", "ip": str(ip), "rule_number": existing}
         )
@@ -169,6 +171,7 @@ def handle(event, table, ec2, nacl_id, allowlist, secret):
     except RuntimeError:
         return _response(503, {"message": "no free rule numbers"})
 
+    print(json.dumps({"result": "blocked", "ip": str(ip), "rule_number": number}))
     return _response(200, {"status": "blocked", "ip": str(ip), "rule_number": number})
 
 

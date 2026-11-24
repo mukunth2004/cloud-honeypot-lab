@@ -263,6 +263,15 @@ class TestHandle(unittest.TestCase):
         with contextlib.redirect_stdout(buffer):
             self.run_handle("not json")
         self.assertIn("rejected_body", buffer.getvalue())
+    def test_outcome_is_logged(self):
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            self.run_handle('{"attacker_ip": "8.8.8.8"}')
+        self.assertIn('"result": "blocked"', buffer.getvalue())
+        
 class TestDuplicateBlocks(unittest.TestCase):
     def test_finds_active_block(self):
         table = FakeTable()
