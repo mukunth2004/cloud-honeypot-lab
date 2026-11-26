@@ -1,6 +1,8 @@
 #!/bin/bash
 # Lab helper: remove every block the Lambda created (NACL rule + table row).
 set -euo pipefail
+export AWS_PROFILE="${AWS_PROFILE:-honeypot}"
+export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-eu-north-1}"
 TABLE=cloud-honeypot-lab-blocked-ips
 NACL=$(aws ec2 describe-network-acls --filters Name=tag:Project,Values=cloud-honeypot-lab --query 'NetworkAcls[0].NetworkAclId' --output text)
 for n in $(aws dynamodb scan --table-name "$TABLE" --query 'Items[].rule_number.N' --output text); do
