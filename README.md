@@ -59,7 +59,7 @@ Collected between 14 and 26 November 2026, with my own test addresses excluded.
 
 Traffic was steady at about 60 to 100 sessions a day. The spike on 21 November was one address opening 87 sessions in about 95 seconds, which is the client the Lambda blocked.
 
-![How far visitors got](docs/images/funnel-client-removed.png)
+![How far visitors got](docs/images/funnel-all-visitors.png)
 
 Most connections never tried to log in. They are scanners.
 
