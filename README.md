@@ -81,3 +81,14 @@ Full write-up, including what the data does not show: [docs/analysis.md](docs/an
 | Terraform manages the base NACL rules and the Lambda manages the runtime deny rules as separate resources | A `terraform apply` does not delete blocks the Lambda has just added |
 | Checkov scans the Terraform in GitHub Actions: 61 passed, 0 failed, 19 skipped | Every skip has a written reason in the code |
 | Docker image pinned by digest | The honeypot version cannot change without a commit |
+
+## Cost and limits
+
+**Cost:** about $30 for the two weeks of data collection, before credits. The instance is a burstable `t3.micro`-class size, the Lambda and DynamoDB stay within the free tier, and Elastic ran on a trial.
+
+**What this does not show**
+- One honeypot, one region, about two weeks.
+- Visitors are not classified. A scanner is not an attacker, and several addresses can belong to one operator.
+- Blocking is by address, so an attacker who rotates addresses is only slowed down.
+- The latency figures come from five runs from one address.
+- The Elastic trial ends in early December, so the live dashboards will stop. The screenshots and exported detection rules in this repo remain.
