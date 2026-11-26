@@ -92,3 +92,32 @@ Full write-up, including what the data does not show: [docs/analysis.md](docs/an
 - Blocking is by address, so an attacker who rotates addresses is only slowed down.
 - The latency figures come from five runs from one address.
 - The Elastic trial ends in early December, so the live dashboards will stop. The screenshots and exported detection rules in this repo remain.
+
+## How to run it
+
+You need an AWS account, Terraform 1.x, and an Elastic Cloud serverless Security project.
+
+1. **Set the profile and region** in every terminal you use:
+   ```
+   export AWS_PROFILE=honeypot
+   export AWS_REGION=eu-north-1
+   ```
+2. **Create the two secrets** in Parameter Store (as `SecureString`): the Filebeat API key from your Elastic project, and a random webhook secret. The parameter names are in `terraform/variables.tf`.
+3. **Deploy:**
+   ```
+   cd terraform
+   terraform init
+   terraform plan
+   terraform apply
+   ```
+4. **Connect Elastic to the Lambda.** Create a Webhook connector that sends the `x-webhook-secret` header to the Function URL (`terraform output`), then import `detections/cowrie-rules.ndjson`. The exported rules have the URL and host removed, so set your own.
+5. **Test it** with `scripts/synthetic_attack.py <instance-ip> 25`. About a minute later the Lambda log should show `blocked`.
+6. **Run the tests:** `cd lambda && python -m pytest` (42 tests).
+
+**Tear down** when you are done, so nothing keeps costing money:
+```
+terraform destroy
+```
+`scripts/clear_blocks.sh` removes leftover deny rules and block records if you need to reset between tests.
+
+**Safety:** the honeypot is deliberately exposed to the internet. Run it in an account with no production resources and keep the outbound restrictions in place.
