@@ -68,3 +68,16 @@ Most connections never tried to log in. They are scanners.
 Most commands test whether the shell is real, then fingerprint the machine.
 
 Full write-up, including what the data does not show: [docs/analysis.md](docs/analysis.md).
+
+## Security decisions
+
+| Decision | Why |
+|---|---|
+| No SSH to the instance; admin access through SSM Session Manager | No inbound admin port to attack, and sessions are logged in AWS |
+| IMDSv2 required, hop limit 1 | A process inside the Cowrie container cannot reach the instance's credentials |
+| Least-privilege IAM, plus an explicit Deny on all SSM parameters except the Filebeat key | A negative test showed the managed `AmazonSSMManagedInstanceCore` policy could read other parameters, so I added the Deny and re-tested |
+| Security group allows outbound only on 80, 443 and 53 | A compromised honeypot cannot easily connect out to other ports |
+| Lambda Function URL with a shared secret checked by `hmac.compare_digest` | Only Elastic can trigger a block, and the check is constant-time |
+| Terraform manages the base NACL rules and the Lambda manages the runtime deny rules as separate resources | A `terraform apply` does not delete blocks the Lambda has just added |
+| Checkov scans the Terraform in GitHub Actions: 61 passed, 0 failed, 19 skipped | Every skip has a written reason in the code |
+| Docker image pinned by digest | The honeypot version cannot change without a commit |
