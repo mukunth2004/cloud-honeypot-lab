@@ -41,3 +41,30 @@ flowchart LR
 5. **Expiry.** Each block lasts 2 hours. A scheduled run every 5 minutes removes expired rules, so the ACL cannot fill up and block addresses forever.
 
 Everything is defined in Terraform. Checkov scans it on every push through GitHub Actions.
+
+## Results
+
+Collected between 14 and 26 November 2026, with my own test addresses excluded.
+
+| Measure | Value |
+|---|---|
+| Sessions | 969 |
+| Distinct source addresses | 527 |
+| Log events | 3,233 |
+| Share of connections that ran a command (one automated client removed) | 5.1% |
+| Real automated client blocked by the Lambda | 1 (confirmed in CloudTrail, expired after 2 h) |
+| Delay from the 20th command to the block (5 controlled runs) | median 39.6 s, range 9.7 to 53.8 s |
+
+![Sessions per day](docs/images/sessions-per-day.png)
+
+Traffic was steady at about 60 to 100 sessions a day. The spike on 21 November was one address opening 87 sessions in about 95 seconds, which is the client the Lambda blocked.
+
+![How far visitors got](docs/images/funnel-client-removed.png)
+
+Most connections never tried to log in. They are scanners.
+
+![Most common commands](docs/images/common-commands.png)
+
+Most commands test whether the shell is real, then fingerprint the machine.
+
+Full write-up, including what the data does not show: [docs/analysis.md](docs/analysis.md).
